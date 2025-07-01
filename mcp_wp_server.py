@@ -1,55 +1,49 @@
+import os
 from flask import Flask, request, jsonify
-from wordpress_xmlrpc import Client, WordPressPage
-from wordpress_xmlrpc.methods import posts, users
+import requests
 
 app = Flask(__name__)
 
-WP_URL = "https://melanita.net/xmlrpc.php"
-WP_USER = "vicove"
-WP_PASS = "x18dmaUqZuYQkqIZqnl1pFNv"
+# WordPress конфигурация – взима от Environment Variables или с зададени стойности по подразбиране
+WP_URL = os.environ.get('WP_URL', 'https://your-wordpress-site.com')  # Базов URL на WordPress сайта
+WP_USER = os.environ.get('WP_USER', 'your_wp_username')               # WordPress потребител с Application Password
+WP_PASS = os.environ.get('WP_PASS', 'your_application_password')      # Application Password за горния потребител
 
-client = Client(WP_URL, WP_USER, WP_PASS)
-
-@app.route("/ping", methods=["GET"])
-def ping():
-    return jsonify({"status": "ok"})
-
-@app.route("/get_page", methods=["POST"])
-def get_page():
-    try:
-        data = request.get_json()
-        page_id = data.get("page_id")
-        if not page_id:
-            return jsonify({"status": "error", "message": "Missing page_id"}), 400
-
-        page = client.call(posts.GetPost(page_id))
-
-        return jsonify({
-            "status": "ok",
-            "page_id": page.id,
-            "title": page.title,
-            "content": page.content
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route("/update", methods=["POST"])
+@app.route('/update', methods=['POST'])
 def update_page():
+    data = request.get_json()
+    if not data or 'page_id' not in data or 'new_content' not in data:
+        return jsonify({'error': 'Expected JSON with "page_id" and "new_content"'}), 400
+
+    page_id = data['page_id']
+    new_content = data['new_content']
+
+    # Изграждаме URL за WordPress REST API за съответната страница
+    api_url = f"{WP_URL}/wp-json/wp/v2/pages/{page_id}"
+    payload = {'content': new_content}
+
     try:
-        data = request.get_json()
-        page_id = data.get("page_id")
-        new_content = data.get("new_content")
-
-        if not page_id or not new_content:
-            return jsonify({"status": "error", "message": "Missing page_id or new_content"}), 400
-
-        page = client.call(posts.GetPost(page_id))
-        page.content = new_content
-        client.call(posts.EditPost(page_id, page))
-
-        return jsonify({"status": "ok", "message": f"Page {page_id} updated."})
+        # Изпращаме POST заявка за обновяване на страницата с Basic Authentication
+        response = requests.post(api_url, json=payload, auth=(WP_USER, WP_PASS))
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    # Проверяваме отговора от WordPress
+    if response.status_code == 200:
+        return jsonify({'status': 'success', 'page_id': page_id})
+    else:
+        # Връщаме детайли при неуспех (напр. грешни креденшъли или несъществуваща страница)
+        return jsonify({
+            'status': 'error',
+            'code': response.status_code,
+            'response': response.text
+        }), 500
+
+# Опционално: начална страница или здравен чек
+@app.route('/', methods=['GET'])
+def hello():
+    return "Flask server is running!", 200
+
+# Локално стартиране на сървъра за тест (в Railway се стартира с Gunicorn, виж по-долу)
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
