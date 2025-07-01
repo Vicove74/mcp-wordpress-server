@@ -1,8 +1,11 @@
+[providers]
+python = "3.9"
+
 [phases.setup]
-nixPkgs = ["python39"]
+nixPkgs = ["python39", "python39Packages.pip"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["python -m pip install --upgrade pip", "pip install -r requirements.txt"]
 
 [start]
 cmd = "gunicorn mcp_wp_server:app --bind 0.0.0.0:$PORT"
