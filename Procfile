@@ -1,1 +1,1 @@
-web: gunicorn minimal_wp_server:app
+web: gunicorn super_simple_wp:app
