@@ -1,266 +1,308 @@
 import os
-import logging
+import json
 from flask import Flask, request, jsonify
 import requests
-from requests.auth import HTTPBasicAuth
-import json
-
-# Настройка на логване
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from datetime import datetime
 
 app = Flask(__name__)
 
 # WordPress конфигурация от Environment Variables
-WP_URL = os.environ.get('WP_URL', 'https://your-wordpress-site.com').rstrip('/')
+WP_URL = os.environ.get('WP_URL', 'https://your-wordpress-site.com')
 WP_USER = os.environ.get('WP_USER', 'your_wp_username')
 WP_PASS = os.environ.get('WP_PASS', 'your_application_password')
 
-def get_wp_headers():
-    """Създава правилните headers за WordPress REST API"""
-    return {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'MCP-WordPress-Server/1.0'
-    }
-
-def test_wp_connection():
-    """Тества връзката с WordPress REST API"""
-    try:
-        test_url = f"{WP_URL}/wp-json/wp/v2/pages"
-        response = requests.get(
-            test_url,
-            auth=HTTPBasicAuth(WP_USER, WP_PASS),
-            headers=get_wp_headers(),
-            timeout=10
-        )
-        logger.info(f"WordPress connection test: {response.status_code}")
-        return response.status_code == 200
-    except Exception as e:
-        logger.error(f"WordPress connection failed: {str(e)}")
-        return False
+def log_message(message):
+    """Проста функция за логване с timestamp"""
+    timestamp = datetime.now().isoformat()
+    print(f"[{timestamp}] {message}")
 
 @app.route('/', methods=['GET'])
-def health_check():
-    """Здравна проверка и тест на WordPress връзката"""
-    wp_status = test_wp_connection()
+def hello():
+    """Основна страница за проверка дали сървърът работи"""
     return jsonify({
-        'status': 'running',
-        'wordpress_connection': wp_status,
-        'wp_url': WP_URL,
-        'wp_user': WP_USER[:3] + '***' if WP_USER else 'not_set'
+        "status": "running",
+        "message": "WordPress MCP Server is operational",
+        "endpoints": {
+            "update_page": "POST /update",
+            "get_page": "GET /page/<page_id>",
+            "test_connection": "GET /test"
+        }
     }), 200
+
+@app.route('/test', methods=['GET'])
+def test_wp_connection():
+    """Тестване на връзката с WordPress без промяна на данни"""
+    try:
+        # Тестваме с GET заявка към WordPress REST API
+        api_url = f"{WP_URL}/wp-json/wp/v2/pages"
+        
+        log_message(f"Testing connection to: {api_url}")
+        
+        response = requests.get(
+            api_url,
+            auth=(WP_USER, WP_PASS),
+            timeout=30,
+            params={'per_page': 1}  # Вземаме само 1 страница за тест
+        )
+        
+        log_message(f"WordPress response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            pages = response.json()
+            return jsonify({
+                "status": "success",
+                "message": "WordPress connection successful",
+                "wp_url": WP_URL,
+                "user": WP_USER,
+                "pages_found": len(pages),
+                "sample_page": pages[0] if pages else None
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "WordPress connection failed",
+                "wp_url": WP_URL,
+                "user": WP_USER,
+                "status_code": response.status_code,
+                "response": response.text[:500]  # Първите 500 символа
+            }), 400
+            
+    except Exception as e:
+        log_message(f"Connection test error: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Connection test failed",
+            "error": str(e),
+            "wp_url": WP_URL,
+            "user": WP_USER
+        }), 500
+
+@app.route('/page/<int:page_id>', methods=['GET'])
+def get_page(page_id):
+    """Получаване на информация за конкретна страница"""
+    try:
+        api_url = f"{WP_URL}/wp-json/wp/v2/pages/{page_id}"
+        
+        log_message(f"Getting page {page_id} from: {api_url}")
+        
+        response = requests.get(
+            api_url,
+            auth=(WP_USER, WP_PASS),
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            page_data = response.json()
+            return jsonify({
+                "status": "success",
+                "page": {
+                    "id": page_data.get("id"),
+                    "title": page_data.get("title", {}).get("rendered"),
+                    "content": page_data.get("content", {}).get("rendered"),
+                    "status": page_data.get("status"),
+                    "modified": page_data.get("modified")
+                }
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Page {page_id} not found or access denied",
+                "status_code": response.status_code,
+                "response": response.text[:500]
+            }), response.status_code
+            
+    except Exception as e:
+        log_message(f"Get page error: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Failed to get page",
+            "error": str(e)
+        }), 500
+
+@app.route('/update', methods=['POST'])
+def update_page():
+    """Обновяване на WordPress страница"""
+    try:
+        # Проверка на JSON данните
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "status": "error",
+                "message": "No JSON data provided"
+            }), 400
+            
+        if 'page_id' not in data or 'new_content' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "Required fields: 'page_id' and 'new_content'",
+                "received_fields": list(data.keys()) if data else []
+            }), 400
+
+        page_id = data['page_id']
+        new_content = data['new_content']
+        
+        log_message(f"Updating page {page_id} with content length: {len(new_content)}")
+        
+        # Първо проверяваме дали страницата съществува
+        api_url = f"{WP_URL}/wp-json/wp/v2/pages/{page_id}"
+        
+        get_response = requests.get(
+            api_url,
+            auth=(WP_USER, WP_PASS),
+            timeout=30
+        )
+        
+        if get_response.status_code != 200:
+            return jsonify({
+                "status": "error",
+                "message": f"Page {page_id} not found or not accessible",
+                "status_code": get_response.status_code,
+                "response": get_response.text[:500]
+            }), 404
+        
+        # Подготвяме payload за обновяване
+        # WordPress REST API очаква различен формат за съдържанието
+        payload = {
+            "content": new_content,
+            "status": "publish"  # Уверяваме се че страницата е публикувана
+        }
+        
+        # Добавяме допълнителни полета ако са подадени
+        if 'title' in data:
+            payload['title'] = data['title']
+        if 'excerpt' in data:
+            payload['excerpt'] = data['excerpt']
+        
+        log_message(f"Sending UPDATE request to: {api_url}")
+        log_message(f"Payload keys: {list(payload.keys())}")
+        
+        # Изпращаме POST заявка за обновяване
+        response = requests.post(
+            api_url,
+            json=payload,
+            auth=(WP_USER, WP_PASS),
+            timeout=30,
+            headers={
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        )
+        
+        log_message(f"WordPress update response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            updated_page = response.json()
+            return jsonify({
+                "status": "success",
+                "message": f"Page {page_id} updated successfully",
+                "page_id": page_id,
+                "updated_at": updated_page.get("modified"),
+                "title": updated_page.get("title", {}).get("rendered"),
+                "content_length": len(new_content)
+            }), 200
+        else:
+            # Детайлно логване на грешката
+            error_text = response.text
+            log_message(f"Update failed with status {response.status_code}: {error_text}")
+            
+            try:
+                error_json = response.json()
+                error_message = error_json.get("message", "Unknown error")
+                error_code = error_json.get("code", "unknown")
+            except:
+                error_message = error_text[:500]
+                error_code = "parse_error"
+            
+            return jsonify({
+                "status": "error",
+                "message": "Failed to update WordPress page",
+                "wp_error_code": error_code,
+                "wp_error_message": error_message,
+                "status_code": response.status_code,
+                "page_id": page_id,
+                "debug_info": {
+                    "wp_url": WP_URL,
+                    "user": WP_USER,
+                    "payload_keys": list(payload.keys())
+                }
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "status": "error",
+            "message": "Request timeout - WordPress site may be slow",
+            "error_type": "timeout"
+        }), 408
+        
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "status": "error",
+            "message": "Cannot connect to WordPress site",
+            "error_type": "connection_error",
+            "wp_url": WP_URL
+        }), 503
+        
+    except Exception as e:
+        log_message(f"Unexpected error in update_page: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Unexpected server error",
+            "error": str(e),
+            "error_type": "server_error"
+        }), 500
 
 @app.route('/pages', methods=['GET'])
 def list_pages():
-    """Списък с WordPress страници"""
+    """Листване на WordPress страници"""
     try:
         api_url = f"{WP_URL}/wp-json/wp/v2/pages"
+        
+        # Параметри за заявката
         params = {
-            'per_page': 20,
-            'status': 'publish,draft'
+            'per_page': request.args.get('per_page', 10),
+            'page': request.args.get('page', 1),
+            'status': 'publish'
         }
         
         response = requests.get(
             api_url,
-            auth=HTTPBasicAuth(WP_USER, WP_PASS),
-            headers=get_wp_headers(),
+            auth=(WP_USER, WP_PASS),
             params=params,
-            timeout=15
+            timeout=30
         )
-        
-        logger.info(f"List pages response: {response.status_code}")
         
         if response.status_code == 200:
             pages = response.json()
             simplified_pages = []
+            
             for page in pages:
                 simplified_pages.append({
-                    'id': page['id'],
-                    'title': page['title']['rendered'],
-                    'slug': page['slug'],
-                    'status': page['status'],
-                    'modified': page['modified']
+                    "id": page.get("id"),
+                    "title": page.get("title", {}).get("rendered"),
+                    "status": page.get("status"),
+                    "modified": page.get("modified"),
+                    "link": page.get("link")
                 })
-            return jsonify({'status': 'success', 'pages': simplified_pages})
+            
+            return jsonify({
+                "status": "success",
+                "pages": simplified_pages,
+                "total_found": len(simplified_pages)
+            }), 200
         else:
             return jsonify({
-                'status': 'error',
-                'code': response.status_code,
-                'message': response.text
-            }), 500
-            
-    except Exception as e:
-        logger.error(f"Error listing pages: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/page/<int:page_id>', methods=['GET'])
-def get_page(page_id):
-    """Вземане на конкретна страница"""
-    try:
-        api_url = f"{WP_URL}/wp-json/wp/v2/pages/{page_id}"
-        
-        response = requests.get(
-            api_url,
-            auth=HTTPBasicAuth(WP_USER, WP_PASS),
-            headers=get_wp_headers(),
-            timeout=15
-        )
-        
-        logger.info(f"Get page {page_id} response: {response.status_code}")
-        
-        if response.status_code == 200:
-            page = response.json()
-            return jsonify({
-                'status': 'success',
-                'page': {
-                    'id': page['id'],
-                    'title': page['title']['rendered'],
-                    'content': page['content']['rendered'],
-                    'slug': page['slug'],
-                    'status': page['status']
-                }
-            })
-        else:
-            return jsonify({
-                'status': 'error',
-                'code': response.status_code,
-                'message': response.text
-            }), 404 if response.status_code == 404 else 500
-            
-    except Exception as e:
-        logger.error(f"Error getting page {page_id}: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/update', methods=['POST'])
-def update_page():
-    """Обновяване на WordPress страница - подобрена версия"""
-    try:
-        data = request.get_json()
-        
-        # Валидация на входните данни
-        if not data:
-            return jsonify({'error': 'No JSON data provided'}), 400
-            
-        if 'page_id' not in data:
-            return jsonify({'error': 'page_id is required'}), 400
-            
-        page_id = data['page_id']
-        
-        # Подготвяме payload за обновяване
-        payload = {}
-        
-        # Различни полета за обновяване
-        if 'new_content' in data:
-            payload['content'] = data['new_content']
-        if 'title' in data:
-            payload['title'] = data['title']
-        if 'status' in data:
-            payload['status'] = data['status']
-        if 'slug' in data:
-            payload['slug'] = data['slug']
-            
-        if not payload:
-            return jsonify({'error': 'No content to update provided'}), 400
-        
-        # WordPress REST API URL
-        api_url = f"{WP_URL}/wp-json/wp/v2/pages/{page_id}"
-        
-        logger.info(f"Updating page {page_id} with payload: {json.dumps(payload)}")
-        
-        # Правим POST заявка (НЕ PUT!)
-        response = requests.post(
-            api_url,
-            json=payload,
-            auth=HTTPBasicAuth(WP_USER, WP_PASS),
-            headers=get_wp_headers(),
-            timeout=30
-        )
-        
-        logger.info(f"Update response: {response.status_code}")
-        logger.info(f"Response content: {response.text[:200]}...")
-        
-        # Проверяваме отговора
-        if response.status_code == 200:
-            updated_page = response.json()
-            return jsonify({
-                'status': 'success',
-                'page_id': page_id,
-                'title': updated_page.get('title', {}).get('rendered', ''),
-                'modified': updated_page.get('modified', ''),
-                'link': updated_page.get('link', '')
-            })
-        else:
-            # Детайлна грешка за дебъгване
-            error_details = {
-                'status': 'error',
-                'code': response.status_code,
-                'message': response.text,
-                'url': api_url,
-                'auth_user': WP_USER
-            }
-            
-            # Специфични съобщения за грешки
-            if response.status_code == 401:
-                error_details['hint'] = 'Check WordPress credentials and Application Password'
-            elif response.status_code == 403:
-                error_details['hint'] = 'User lacks permission to edit this page'
-            elif response.status_code == 404:
-                error_details['hint'] = 'Page not found'
-            elif response.status_code == 400:
-                error_details['hint'] = 'Invalid data sent to WordPress'
-                
-            return jsonify(error_details), 500
-            
-    except requests.exceptions.Timeout:
-        return jsonify({'status': 'error', 'error': 'Request timeout'}), 500
-    except requests.exceptions.ConnectionError:
-        return jsonify({'status': 'error', 'error': 'Connection error to WordPress'}), 500
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/test-auth', methods=['GET'])
-def test_auth():
-    """Тестване на WordPress автентикация"""
-    try:
-        # Опитваме се да вземем информация за потребителя
-        api_url = f"{WP_URL}/wp-json/wp/v2/users/me"
-        
-        response = requests.get(
-            api_url,
-            auth=HTTPBasicAuth(WP_USER, WP_PASS),
-            headers=get_wp_headers(),
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            user_data = response.json()
-            return jsonify({
-                'status': 'success',
-                'authenticated': True,
-                'user': {
-                    'id': user_data.get('id'),
-                    'username': user_data.get('username'),
-                    'roles': user_data.get('roles', []),
-                    'capabilities': list(user_data.get('capabilities', {}).keys())[:10]
-                }
-            })
-        else:
-            return jsonify({
-                'status': 'error',
-                'authenticated': False,
-                'code': response.status_code,
-                'message': response.text
-            }), 401
+                "status": "error",
+                "message": "Failed to fetch pages",
+                "status_code": response.status_code
+            }), response.status_code
             
     except Exception as e:
         return jsonify({
-            'status': 'error',
-            'authenticated': False,
-            'error': str(e)
+            "status": "error",
+            "message": "Failed to list pages",
+            "error": str(e)
         }), 500
 
-# За локално тестване
 if __name__ == '__main__':
+    # Локално стартиране за тестване
     app.run(debug=True, host='0.0.0.0', port=5000)
