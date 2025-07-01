@@ -1,6 +1,10 @@
 import os
 from flask import Flask, request, jsonify
 import requests
+import urllib3
+
+# Disable SSL warnings for testing
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
@@ -33,7 +37,13 @@ def test():
         url = f"{WP_URL}/wp-json/wp/v2/pages?per_page=1"
         print(f"Testing URL: {url}")
         
-        response = requests.get(url, auth=(WP_USER, WP_PASS), timeout=10)
+        response = requests.get(
+            url, 
+            auth=(WP_USER, WP_PASS), 
+            timeout=10,
+            verify=False,  # Skip SSL verification for testing
+            headers={'User-Agent': 'Railway-MCP-Server/1.0'}
+        )
         
         return {
             "status": "success" if response.status_code == 200 else "error",
@@ -73,7 +83,9 @@ def update_page():
             url, 
             json=payload, 
             auth=(WP_USER, WP_PASS),
-            timeout=30
+            timeout=30,
+            verify=False,  # Skip SSL verification for testing
+            headers={'User-Agent': 'Railway-MCP-Server/1.0'}
         )
         
         if response.status_code == 200:
