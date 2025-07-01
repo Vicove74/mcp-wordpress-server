@@ -28,7 +28,7 @@ def handle_mcp_request():
         }
 
         wp_response = requests.post(
-            WP_URL,
+            f"{WP_URL}/wp-json/wp/v2/posts",
             auth=HTTPBasicAuth(WP_USER, WP_APP_PASSWORD),
             json=post_data
         )
@@ -46,4 +46,5 @@ def handle_mcp_request():
     })
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
