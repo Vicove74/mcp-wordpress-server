@@ -1,56 +1,55 @@
 from flask import Flask, request, jsonify
 import requests
 from requests.auth import HTTPBasicAuth
+import os
 
 app = Flask(__name__)
 
-WP_URL = "https://melanita.net/wp-json/wp/v2/pages"
-WP_USER = "vicove"
-WP_APP_PASSWORD = "x18dmaUqZuYQkqIZqnl1pFNv"
-
-auth = HTTPBasicAuth(WP_USER, WP_APP_PASSWORD)
+WP_URL = os.getenv("WP_URL") or "https://melanita.net/wp-json/wp/v2/pages"
+WP_USER = os.getenv("WP_USER") or "vicove"
+WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD") or "x18dmaUqZuYQkqIZqnl1pFNv"
 
 @app.route("/mcp", methods=["POST"])
 def create_or_update_page():
     data = request.get_json()
-    params = data.get("params", {})
-    title = params.get("title", "Без заглавие")
-    content = params.get("content", "")
-    status = params.get("status", "publish")
+    title = data.get("title", "Без заглавие")
+    content = data.get("content", "")
+    status = data.get("status", "publish")
 
-    # Проверка дали вече съществува такава страница
-    search_url = f"{WP_URL}?search={title}"
-    search_response = requests.get(search_url, auth=auth)
-
-    if search_response.status_code == 200 and search_response.json():
-        page_id = search_response.json()[0]["id"]
-        response = requests.put(f"{WP_URL}/{page_id}", auth=auth, json={
-            "title": title,
-            "content": content,
-            "status": status
-        })
-        action = "updated"
-    else:
-        response = requests.post(WP_URL, auth=auth, json={
-            "title": title,
-            "content": content,
-            "status": status
-        })
-        action = "created"
+    auth = HTTPBasicAuth(WP_USER, WP_APP_PASSWORD)
 
     try:
-        result = response.json()
-    except:
-        result = {"error": "Invalid JSON response", "text": response.text}
+        # Потърси дали вече съществува такава страница
+        search = requests.get(f"{WP_URL}?search={title}", auth=auth)
+        if search.status_code == 200 and search.json():
+            page_id = search.json()[0]["id"]
+            wp_response = requests.put(
+                f"{WP_URL}/{page_id}",
+                auth=auth,
+                json={"title": title, "content": content, "status": status}
+            )
+        else:
+            wp_response = requests.post(
+                WP_URL,
+                auth=auth,
+                json={"title": title, "content": content, "status": status}
+            )
 
-    return jsonify({
-        "jsonrpc": "2.0",
-        "result": result,
-        "action": action,
-        "status_code": response.status_code
-    })
+        try:
+            return jsonify({
+                "status_code": wp_response.status_code,
+                "result": wp_response.json()
+            })
+        except Exception:
+            return jsonify({
+                "status_code": wp_response.status_code,
+                "error": "Invalid JSON response",
+                "text": wp_response.text
+            })
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
