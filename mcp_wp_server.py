@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 WP_URL = "https://melanita.net"
 WP_USER = "test"
-WP_APP_PASSWORD = "S0UT TmwR hP01 02Dh fMn8 5p07".replace(" ", "")
+WP_APP_PASSWORD = "S0UTTmwRhP0102DhfMn85p07".replace(" ", "")
 
 @app.route("/mcp", methods=["POST"])
 def create_wp_post():
