@@ -24,20 +24,31 @@ def home():
 @app.route('/test')
 def test():
     try:
+        # Debug информация
+        print(f"WP_URL from env: '{WP_URL}'")
+        print(f"WP_USER from env: '{WP_USER}'")
+        print(f"WP_PASS set: {bool(WP_PASS)}")
+        
         # Проста проверка на REST API
         url = f"{WP_URL}/wp-json/wp/v2/pages?per_page=1"
+        print(f"Testing URL: {url}")
+        
         response = requests.get(url, auth=(WP_USER, WP_PASS), timeout=10)
         
         return {
             "status": "success" if response.status_code == 200 else "error",
             "wp_status": response.status_code,
             "message": "Connection test completed",
-            "url_tested": url
+            "url_tested": url,
+            "wp_url_raw": repr(WP_URL),
+            "url_length": len(WP_URL)
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": str(e)
+            "message": str(e),
+            "url_tested": f"{WP_URL}/wp-json/wp/v2/pages?per_page=1",
+            "wp_url_raw": repr(WP_URL)
         }
 
 @app.route('/update', methods=['POST'])
