@@ -12,7 +12,6 @@ WP_APP_PASSWORD = "S0UTTmwRhP0102DhfMn85p07".replace(" ", "")
 @app.route("/mcp", methods=["POST"])
 def create_wp_post():
     data = request.get_json()
-
     post_data = {
         "title": data.get("title", "Без заглавие"),
         "content": data.get("content", ""),
@@ -25,11 +24,13 @@ def create_wp_post():
         json=post_data
     )
 
-    if wp_response.status_code == 201:
-        return jsonify({"message": "Постът е създаден успешно!"}), 201
-    else:
-        return jsonify({"error": wp_response.text}), wp_response.status_code
+    try:
+        response_json = wp_response.json()
+    except Exception as e:
+        response_json = {"error": "Invalid JSON response", "text": wp_response.text}
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    return jsonify({
+        "jsonrpc": "2.0",
+        "result": response_json,
+        "status_code": wp_response.status_code
+    })
