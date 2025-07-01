@@ -27,38 +27,60 @@ def home():
 
 @app.route('/test')
 def test():
+    import socket
+    import ssl
+    
+    debug_info = {
+        "wp_url": WP_URL,
+        "wp_user": WP_USER, 
+        "wp_pass_set": bool(WP_PASS),
+        "wp_pass_length": len(WP_PASS) if WP_PASS else 0
+    }
+    
     try:
-        # Debug информация
-        print(f"WP_URL from env: '{WP_URL}'")
-        print(f"WP_USER from env: '{WP_USER}'")
-        print(f"WP_PASS set: {bool(WP_PASS)}")
+        # Тест 1: Опитваме да resolve домейна
+        import socket
+        ip = socket.gethostbyname('melanita.net')
+        debug_info["domain_ip"] = ip
         
-        # Проста проверка на REST API
+        # Тест 2: Опитваме основна HTTP заявка
+        import urllib.request
+        basic_url = f"{WP_URL}/wp-json/"
+        
+        try:
+            with urllib.request.urlopen(basic_url) as response:
+                debug_info["basic_wp_json"] = "accessible"
+        except Exception as e:
+            debug_info["basic_wp_json_error"] = str(e)
+        
+        # Тест 3: Опитваме с requests
         url = f"{WP_URL}/wp-json/wp/v2/pages?per_page=1"
         print(f"Testing URL: {url}")
+        print(f"Auth: {WP_USER}:{WP_PASS[:4]}...")
         
         response = requests.get(
             url, 
             auth=(WP_USER, WP_PASS), 
             timeout=10,
-            verify=False,  # Skip SSL verification for testing
+            verify=False,
             headers={'User-Agent': 'Railway-MCP-Server/1.0'}
         )
         
+        debug_info["requests_status"] = response.status_code
+        debug_info["requests_response"] = response.text[:200]
+        
         return {
             "status": "success" if response.status_code == 200 else "error",
-            "wp_status": response.status_code,
-            "message": "Connection test completed",
-            "url_tested": url,
-            "wp_url_raw": repr(WP_URL),
-            "url_length": len(WP_URL)
+            "debug": debug_info
         }
+        
     except Exception as e:
+        debug_info["error"] = str(e)
+        debug_info["error_type"] = type(e).__name__
+        
         return {
             "status": "error",
-            "message": str(e),
-            "url_tested": f"{WP_URL}/wp-json/wp/v2/pages?per_page=1",
-            "wp_url_raw": repr(WP_URL)
+            "debug": debug_info
         }
 
 @app.route('/update', methods=['POST'])
