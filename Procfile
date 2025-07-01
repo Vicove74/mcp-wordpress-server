@@ -1,1 +1,2 @@
-web: python mcp_wp_server.py
+web: gunicorn mcp_wp_server:app
+
