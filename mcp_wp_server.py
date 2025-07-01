@@ -9,86 +9,76 @@ WP_URL = os.getenv("WP_URL")
 WP_USER = os.getenv("WP_USER")
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")
 
-auth = HTTPBasicAuth(WP_USER, WP_APP_PASSWORD)
-
-
-def wp_get(endpoint, params=None):
-    return requests.get(f"{WP_URL}/wp-json/wp/v2/{endpoint}", auth=auth, params=params)
-
-
-def wp_post(endpoint, data):
-    return requests.post(f"{WP_URL}/wp-json/wp/v2/{endpoint}", auth=auth, json=data)
-
-
-def wp_put(endpoint, data):
-    return requests.put(f"{WP_URL}/wp-json/wp/v2/{endpoint}", auth=auth, json=data)
-
-
 @app.route("/mcp", methods=["POST"])
-def handle_request():
+def handle_mcp_request():
     req = request.get_json()
     method = req.get("method")
     params = req.get("params", {})
-    req_id = req.get("id")
+
+    if method == "createPost":
+        return create_post(params, req.get("id"))
+    elif method == "updatePage":
+        return update_page(params, req.get("id"))
+
+    return jsonify({
+        "jsonrpc": "2.0",
+        "error": {"code": -32601, "message": "Методът не е намерен"},
+        "id": req.get("id")
+    })
+
+def create_post(params, req_id):
+    post_data = {
+        "title": params.get("title", "Без заглавие"),
+        "content": params.get("content", ""),
+        "status": params.get("status", "publish")
+    }
+
+    wp_response = requests.post(
+        f"{WP_URL}/wp-json/wp/v2/posts",
+        auth=HTTPBasicAuth(WP_USER, WP_APP_PASSWORD),
+        json=post_data
+    )
+
+    return jsonify({
+        "jsonrpc": "2.0",
+        "result": wp_response.json(),
+        "id": req_id
+    })
+
+def update_page(params, req_id):
+    page_id = params.get("id")
+    if not page_id:
+        return jsonify({
+            "jsonrpc": "2.0",
+            "error": {"code": -32602, "message": "Missing page ID"},
+            "id": req_id
+        })
+
+    page_data = {}
+    if "title" in params:
+        page_data["title"] = params["title"]
+    if "content" in params:
+        page_data["content"] = params["content"]
+    if "status" in params:
+        page_data["status"] = params["status"]
+
+    wp_response = requests.post(
+        f"{WP_URL}/wp-json/wp/v2/pages/{page_id}",
+        auth=HTTPBasicAuth(WP_USER, WP_APP_PASSWORD),
+        json=page_data
+    )
 
     try:
-        if method == "getPageByTitle":
-            title = params.get("title")
-            lang = params.get("lang", "bg")
-            response = wp_get("pages", {"search": title, "lang": lang})
-            return respond(req_id, response.json())
-
-        elif method == "getTranslatedPageId":
-            title = params.get("title")
-            lang = params.get("lang")
-            response = wp_get("pages", {"search": title})
-            for page in response.json():
-                if page.get("title", {}).get("rendered") == title:
-                    page_id = page.get("id")
-                    lang_response = wp_get(f"pages/{page_id}", {"lang": lang})
-                    if lang_response.status_code == 200:
-                        return respond(req_id, lang_response.json())
-            return error_response(req_id, "Translation not found")
-
-        elif method == "updatePageContentByTitle":
-            title = params.get("title")
-            content = params.get("content")
-            lang = params.get("lang", "bg")
-            response = wp_get("pages", {"search": title, "lang": lang})
-            for page in response.json():
-                if page.get("title", {}).get("rendered") == title:
-                    page_id = page["id"]
-                    update = wp_put(f"pages/{page_id}", {"content": content})
-                    return respond(req_id, update.json())
-            return error_response(req_id, "Page not found")
-
-        elif method == "updateOrCreatePage":
-            title = params.get("title")
-            content = params.get("content")
-            status = params.get("status", "publish")
-            lang = params.get("lang", "bg")
-            existing = wp_get("pages", {"search": title, "lang": lang})
-            for page in existing.json():
-                if page.get("title", {}).get("rendered") == title:
-                    update = wp_put(f"pages/{page['id']}", {"content": content, "status": status})
-                    return respond(req_id, update.json())
-            create = wp_post("pages", {"title": title, "content": content, "status": status})
-            return respond(req_id, create.json())
-
-        else:
-            return error_response(req_id, f"Unknown method '{method}'")
-
+        response_json = wp_response.json()
     except Exception as e:
-        return error_response(req_id, str(e))
+        response_json = {"error": "Invalid JSON response", "text": wp_response.text}
 
-
-def respond(req_id, result):
-    return jsonify({"jsonrpc": "2.0", "result": result, "id": req_id})
-
-
-def error_response(req_id, message):
-    return jsonify({"jsonrpc": "2.0", "error": {"code": -32000, "message": message}, "id": req_id})
-
+    return jsonify({
+        "jsonrpc": "2.0",
+        "result": response_json,
+        "status_code": wp_response.status_code,
+        "id": req_id
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
