@@ -3,13 +3,8 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 @app.route("/ping", methods=["GET"])
-def ping_wp():
-    try:
-        wp_url = "https://melanita.net/wp-json/"
-        response = requests.get(wp_url, timeout=10)
-        return jsonify({
-            "status_code": response.status_code,
-            "text": response.text[:300]  # само първите 300 символа
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)})
+def ping():
+    return jsonify({"status": "ok", "message": "Server is reachable!"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
