@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
 from requests.auth import HTTPBasicAuth
-import os
 
 app = Flask(__name__)
 
@@ -19,22 +18,19 @@ def create_or_update_page():
     content = params.get("content", "")
     status = params.get("status", "publish")
 
-    # Проверка дали вече има такава страница
+    # Проверка дали вече съществува такава страница
     search_url = f"{WP_URL}?search={title}"
     search_response = requests.get(search_url, auth=auth)
-    
+
     if search_response.status_code == 200 and search_response.json():
-        # Страницата съществува – взимаме ID и ъпдейтваме
         page_id = search_response.json()[0]["id"]
-        update_url = f"{WP_URL}/{page_id}"
-        response = requests.put(update_url, auth=auth, json={
+        response = requests.put(f"{WP_URL}/{page_id}", auth=auth, json={
             "title": title,
             "content": content,
             "status": status
         })
         action = "updated"
     else:
-        # Няма такава страница – създаваме нова
         response = requests.post(WP_URL, auth=auth, json={
             "title": title,
             "content": content,
@@ -55,5 +51,6 @@ def create_or_update_page():
     })
 
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
