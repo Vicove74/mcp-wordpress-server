@@ -1,34 +1,56 @@
 from flask import Flask, request, jsonify
 import requests
+from requests.auth import HTTPBasicAuth
+from dotenv import load_dotenv
 import os
+
+# Load credentials from .env file
+load_dotenv()
+
+WP_BASE_URL = os.getenv("WP_BASE_URL")  # e.g., https://melanita.net
+WP_USERNAME = os.getenv("WP_USERNAME")  # e.g., vicove
+WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")  # app password
 
 app = Flask(__name__)
 
-WP_URL = "https://melanita.net/wp-json/wp/v2/pages"
-WP_USER = "vicove"
-WP_APP_PASS = "x18dmaUqZuYQkqIZqnl1pFNv"
-
 @app.route("/ping", methods=["GET"])
 def ping():
-    return jsonify({"status": "ok", "message": "Server is reachable!"})
+    return jsonify({"status": "ok", "message": "MCP server running"})
 
 @app.route("/update", methods=["POST"])
 def update_page():
-    data = request.get_json()
-    page_id = data.get("page_id")
-    new_content = data.get("new_content")
+    try:
+        data = request.get_json()
+        page_id = data["page_id"]
+        new_content = data["new_content"]
 
-    if not page_id or not new_content:
-        return jsonify({"error": "Missing page_id or new_content"}), 400
+        wp_url = f"{WP_BASE_URL}/wp-json/wp/v2/pages/{page_id}"
+        headers = {"Content-Type": "application/json"}
 
-    response = requests.post(
-        f"{WP_URL}/{page_id}",
-        auth=(WP_USER, WP_APP_PASS),
-        headers={"Content-Type": "application/json"},
-        json={"content": new_content}
-    )
+        payload = {
+            "content": new_content
+        }
 
-    if response.status_code == 200:
-        return jsonify({"status": "success", "details": response.json()})
-    else:
-        return jsonify({"status": "fail", "response": response.text}), response.status_code
+        response = requests.post(
+            wp_url,
+            auth=HTTPBasicAuth(WP_USERNAME, WP_APP_PASSWORD),
+            headers=headers,
+            json=payload
+        )
+
+        try:
+            response_json = response.json()
+        except Exception:
+            response_json = {"error": "Invalid JSON response", "text": response.text}
+
+        return jsonify({
+            "status": "ok" if response.status_code == 200 else "error",
+            "status_code": response.status_code,
+            "response": response_json
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+if __name__ == "__main__":
+    app.run(debug=True)
