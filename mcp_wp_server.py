@@ -5,9 +5,9 @@ import os
 
 app = Flask(__name__)
 
-WP_URL = os.getenv("WP_URL")  # Пример: https://melanita.net/wp-json/wp/v2/posts
-WP_USER = os.getenv("WP_USER")  # Пример: Test
-WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD")  # Application Password от WordPress
+WP_URL = "https://melanita.net"
+WP_USER = "test"
+WP_APP_PASSWORD = "S0UT TmwR hP01 02Dh fMn8 5p07".replace(" ", "")
 
 @app.route("/mcp", methods=["POST"])
 def create_wp_post():
