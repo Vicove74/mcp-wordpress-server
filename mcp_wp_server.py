@@ -7,8 +7,8 @@ app = Flask(__name__)
 
 # Финален и коректен адрес към WP REST API
 WP_URL = "https://melanita.net/wp-json/wp/v2/posts"
-WP_USER = "Test"
-WP_APP_PASSWORD = "S0UTTmwRhP0102DhfMn85p07".replace(" ", "")
+WP_USER = "vicove"
+WP_APP_PASSWORD = "751349".replace(" ", "")
 
 @app.route("/mcp", methods=["POST"])
 def create_wp_post():
