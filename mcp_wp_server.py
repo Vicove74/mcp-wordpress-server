@@ -5,7 +5,8 @@ import os
 
 app = Flask(__name__)
 
-WP_URL = "https://melanita.net"
+# Финален и коректен адрес към WP REST API
+WP_URL = "https://melanita.net/wp-json/wp/v2/posts"
 WP_USER = "Test"
 WP_APP_PASSWORD = "S0UTTmwRhP0102DhfMn85p07".replace(" ", "")
 
@@ -34,3 +35,7 @@ def create_wp_post():
         "result": response_json,
         "status_code": wp_response.status_code
     })
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
