@@ -1,1 +1,1 @@
-web: gunicorn super_simple_wp:app
+web: gunicorn basic_test:app
