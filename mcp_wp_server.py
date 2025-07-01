@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 
 WP_URL = "https://melanita.net"
-WP_USER = "test"
+WP_USER = "Test"
 WP_APP_PASSWORD = "S0UTTmwRhP0102DhfMn85p07".replace(" ", "")
 
 @app.route("/mcp", methods=["POST"])
