@@ -7,7 +7,7 @@ app = Flask(__name__)
 # WordPress настройки
 WP_URL = os.environ.get('WP_URL', 'https://melanita.net')
 WP_USER = os.environ.get('WP_USER', '')
-WP_PASS = os.environ.get('WP_PASS', '')
+WP_PASS = os.environ.get('WP_APP_PASSWORD', '')
 
 @app.route('/')
 def home():
@@ -93,5 +93,4 @@ def update_page():
         return {"status": "error", "message": str(e)}, 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5000)
