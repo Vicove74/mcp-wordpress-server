@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 
 # Финален и коректен адрес към WP REST API
-WP_URL = "https://melanita.net/wp-json/wp/v2/posts"
+WP_URL = "https://melanita.net/wp-json/wp/v2/pages"
 WP_USER = "vicove"
 WP_APP_PASSWORD = "x18dmaUqZuYQkqIZqnl1pFNv".replace(" ", "")
 
