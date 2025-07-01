@@ -1,1 +1,1 @@
-web: gunicorn basic_test:app
+web: gunicorn mcp_wp_server:app
